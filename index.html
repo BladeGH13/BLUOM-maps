@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>BLUOM Maps</title>
+
+  <!-- MapLibre Engine CDN -->
+  <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body, html { width: 100%; height: 100%; overflow: hidden; background: #1c1c1e; color: #fff; }
+
+    #map { width: 100vw; height: 100vh; }
+
+    /* Apple-inspired Floating UI Overlay */
+    .floating-card {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 10;
+      width: calc(100% - 32px);
+      max-width: 400px;
+      background: rgba(30, 30, 30, 0.75);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 18px;
+      padding: 12px;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+
+    .search-bar {
+      display: flex;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 8px 12px;
+    }
+
+    .search-bar input {
+      border: none;
+      background: transparent;
+      outline: none;
+      color: #fff;
+      font-size: 16px;
+      width: 100%;
+      margin-left: 8px;
+    }
+
+    .search-bar input::placeholder { color: rgba(255, 255, 255, 0.5); }
+
+    .brand-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+      padding: 0 4px;
+    }
+
+    .brand-title {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: #007aff;
+      text-transform: uppercase;
+    }
+
+    /* Floating Quick Action Buttons */
+    .controls-stack {
+      position: absolute;
+      right: 16px;
+      bottom: 32px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .btn-control {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: rgba(30, 30, 30, 0.85);
+      backdrop-filter: blur(15px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #007aff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+      transition: all 0.2s ease;
+    }
+
+    .btn-control:active { transform: scale(0.92); }
+
+    /* Custom Popup Styling */
+    .maplibregl-popup-content {
+      background: rgba(28, 28, 30, 0.9) !important;
+      backdrop-filter: blur(10px) !important;
+      color: #fff !important;
+      border-radius: 14px !important;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 12px 16px !important;
+    }
+    .maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+      border-top-color: rgba(28, 28, 30, 0.9) !important;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Search Card -->
+  <div class="floating-card">
+    <div class="search-bar">
+      🔍 <input type="text" id="searchInput" placeholder="Search location..." onkeydown="if(event.key==='Enter') searchLocation()" />
+    </div>
+    <div class="brand-header">
+      <span class="brand-title">BLUOM Maps</span>
+      <span style="font-size: 11px; opacity: 0.6;">3D Hybrid View</span>
+    </div>
+  </div>
+
+  <!-- Quick Floating Controls -->
+  <div class="controls-stack">
+    <button class="btn-control" onclick="toggle3D()" title="Toggle 3D">🏙️</button>
+    <button class="btn-control" onclick="locateUser()" title="My Location">🎯</button>
+  </div>
+
+  <div id="map"></div>
+
+  <script>
+    // Initialize Map with clean vector basemap
+    const map = new maplibregl.Map({
+      container: 'map',
+      style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', // Sleek dark aesthetic
+      center: [152.829, -26.923], // [Lng, Lat]
+      zoom: 12,
+      pitch: 0,
+      bearing: 0,
+      attributionControl: false // Cleans off forced clutter
+    });
+
+    let is3D = false;
+
+    map.on('load', () => {
+      // Add 3D Extruded Buildings Layer
+      map.addLayer({
+        'id': '3d-buildings',
+        'source': 'carto',
+        'source-layer': 'building',
+        'type': 'fill-extrusion',
+        'minzoom': 13,
+        'paint': {
+          'fill-extrusion-color': '#2c2c2e',
+          'fill-extrusion-height': ['get', 'render_height'],
+          'fill-extrusion-base': ['get', 'render_min_height'],
+          'fill-extrusion-opacity': 0.8
+        }
+      });
+    });
+
+    // Toggle 3D Perspective Pitch
+    function toggle3D() {
+      is3D = !is3D;
+      map.easeTo({
+        pitch: is3D ? 60 : 0,
+        bearing: is3D ? -17 : 0,
+        duration: 1000
+      });
+    }
+
+    // Locate User Position
+    function locateUser() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((position) => {
+          const { longitude, latitude } = position.coords;
+          map.flyTo({ center: [longitude, latitude], zoom: 15, pitch: 45 });
+          
+          new maplibregl.Marker({ color: '#007aff' })
+            .setLngLat([longitude, latitude])
+            .setPopup(new maplibregl.Popup().setHTML('<b>Your Location</b>'))
+            .addTo(map);
+        });
+      }
+    }
+
+    // Free OpenStreetMap Nominatim Search API
+    async function searchLocation() {
+      const query = document.getElementById('searchInput').value;
+      if (!query) return;
+
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+
+      if (data && data.length > 0) {
+        const { lon, lat, display_name } = data[0];
+        map.flyTo({ center: [parseFloat(lon), parseFloat(lat)], zoom: 14 });
+
+        new maplibregl.Marker({ color: '#ff9500' })
+          .setLngLat([parseFloat(lon), parseFloat(lat)])
+          .setPopup(new maplibregl.Popup().setHTML(`<b>${display_name.split(',')[0]}</b><br>${display_name}`))
+          .addTo(map);
+      }
+    }
+  </script>
+</body>
+  </html>
+  
